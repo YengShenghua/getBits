@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { WalletOverview } from "@/components/dashboard/wallet-overview"
@@ -12,40 +12,87 @@ import { ReferralCenter } from "@/components/dashboard/referral-center"
 import { AdminDashboard } from "@/components/admin/admin-dashboard"
 import { useAuth } from "@/components/providers/auth-provider"
 import { TransactionManagement } from "@/components/transactions/transaction-management"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { usePerformanceMonitoring } from "@/hooks/use-performance"
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview")
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
+  const { startTimer } = usePerformanceMonitoring("Dashboard")
+
+  useEffect(() => {
+    if (user) {
+      const timer = startTimer("dashboard-load")
+      // Simulate dashboard load completion
+      setTimeout(() => timer.end(), 100)
+    }
+  }, [user, startTimer])
 
   const renderContent = () => {
     switch (activeTab) {
       case "overview":
         return (
-          <div className="space-y-6">
-            <WalletOverview />
-            <MarketOverview />
-          </div>
+          <ErrorBoundary>
+            <div className="space-y-6">
+              <WalletOverview />
+              <MarketOverview />
+            </div>
+          </ErrorBoundary>
         )
       case "trading":
-        return <TradingInterface />
+        return (
+          <ErrorBoundary>
+            <TradingInterface />
+          </ErrorBoundary>
+        )
       case "history":
-        return <TransactionHistory />
+        return (
+          <ErrorBoundary>
+            <TransactionHistory />
+          </ErrorBoundary>
+        )
       case "referrals":
-        return <ReferralCenter />
+        return (
+          <ErrorBoundary>
+            <ReferralCenter />
+          </ErrorBoundary>
+        )
       case "settings":
-        return <Settings />
+        return (
+          <ErrorBoundary>
+            <Settings />
+          </ErrorBoundary>
+        )
       case "admin":
-        return isAdmin ? <AdminDashboard /> : <div className="text-white">Access Denied</div>
+        return isAdmin ? (
+          <ErrorBoundary>
+            <AdminDashboard />
+          </ErrorBoundary>
+        ) : (
+          <div className="text-white">Access Denied</div>
+        )
       case "transactions":
-        return <TransactionManagement />
+        return (
+          <ErrorBoundary>
+            <TransactionManagement />
+          </ErrorBoundary>
+        )
       default:
-        return <WalletOverview />
+        return (
+          <ErrorBoundary>
+            <WalletOverview />
+          </ErrorBoundary>
+        )
     }
   }
 
   // If admin tab is selected, render full admin dashboard
   if (activeTab === "admin" && isAdmin) {
-    return <AdminDashboard />
+    return (
+      <ErrorBoundary>
+        <AdminDashboard />
+      </ErrorBoundary>
+    )
   }
 
   return (
