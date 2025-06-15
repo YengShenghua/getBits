@@ -1,7 +1,6 @@
 "use client"
 
 import React from "react"
-import * as Sentry from "@sentry/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertTriangle, RefreshCw } from "lucide-react"
@@ -33,12 +32,14 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Error caught by boundary:", error, errorInfo)
 
-    // Log to Sentry
-    Sentry.withScope((scope) => {
-      scope.setTag("errorBoundary", true)
-      scope.setContext("errorInfo", errorInfo)
-      Sentry.captureException(error)
-    })
+    // Log error to console in development
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error details:", {
+        error: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+      })
+    }
 
     this.setState({
       error,
@@ -73,7 +74,9 @@ function DefaultErrorFallback({ error, resetError }: { error: Error; resetError:
             <AlertTriangle className="h-full w-full" />
           </div>
           <CardTitle className="text-red-600">Something went wrong</CardTitle>
-          <CardDescription>We're sorry, but something unexpected happened. Our team has been notified.</CardDescription>
+          <CardDescription>
+            We're sorry, but something unexpected happened. Please try refreshing the page.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {process.env.NODE_ENV === "development" && (
