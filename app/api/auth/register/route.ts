@@ -1,14 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { hashPassword, generateReferralCode } from "@/lib/auth"
+import { hashPassword, generateToken } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, phone, referralCode } = await request.json()
+    const { email, password, firstName, lastName } = await request.json()
 
-    // Check if user already exists
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+    }
+
+    // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: email.toLowerCase() },
     })
 
     if (existingUser) {
@@ -18,39 +22,25 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password)
 
-    // Generate unique referral code
-    let newReferralCode = generateReferralCode()
-    while (await prisma.user.findUnique({ where: { referralCode: newReferralCode } })) {
-      newReferralCode = generateReferralCode()
-    }
-
-    // Find referrer if referral code provided
-    let referredBy = null
-    if (referralCode) {
-      const referrer = await prisma.user.findUnique({
-        where: { referralCode },
-      })
-      if (referrer) {
-        referredBy = referrer.id
-      }
-    }
+    // Generate referral code
+    const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase()
 
     // Create user
     const user = await prisma.user.create({
       data: {
-        email,
+        email: email.toLowerCase(),
         password: hashedPassword,
-        phone,
-        referralCode: newReferralCode,
-        referredBy,
+        firstName,
+        lastName,
+        referralCode,
         signupBonus: 0.002, // 0.002 BTC signup bonus
       },
     })
 
-    // Create default wallets
-    const defaultAssets = ["BTC", "ETH", "USDT", "BNB", "USD", "EUR", "GBP"]
+    // Create initial wallets
+    const assets = ["BTC", "ETH", "USDT", "USD"]
     await Promise.all(
-      defaultAssets.map((asset) =>
+      assets.map((asset) =>
         prisma.wallet.create({
           data: {
             userId: user.id,
@@ -61,30 +51,29 @@ export async function POST(request: NextRequest) {
       ),
     )
 
-    // Add referral bonus if referred
-    if (referredBy) {
-      await prisma.referralEarning.create({
-        data: {
-          userId: referredBy,
-          referredId: user.id,
-          amount: 0.001, // 0.001 BTC referral bonus
-          type: "signup",
-        },
-      })
+    // Generate token
+    const token = generateToken({ userId: user.id, email: user.email })
 
-      // Update referrer's wallet
-      await prisma.wallet.updateMany({
-        where: { userId: referredBy, asset: "BTC" },
-        data: { balance: { increment: 0.001 } },
-      })
-    }
-
-    const { password: _, ...userWithoutPassword } = user
-
-    return NextResponse.json({
-      message: "User created successfully",
-      user: userWithoutPassword,
+    // Create response
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
     })
+
+    // Set cookie
+    response.cookies.set("auth-token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    })
+
+    return response
   } catch (error) {
     console.error("Registration error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

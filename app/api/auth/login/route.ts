@@ -1,70 +1,77 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifyPassword, generateToken } from "@/lib/auth"
+import { withErrorHandling, createAPIError } from "@/lib/api-error-handler"
+import { log } from "@/lib/logger"
 
-export async function POST(request: NextRequest) {
-  try {
-    const { email, password } = await request.json()
+async function loginHandler(request: NextRequest) {
+  const { email, password } = await request.json()
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        wallets: true,
-      },
+  if (!email || !password) {
+    throw createAPIError("Email and password are required", 400, "MISSING_CREDENTIALS")
+  }
+
+  // Find user
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+  })
+
+  if (!user) {
+    // Log failed login attempt
+    log.security("Failed login attempt - user not found", {
+      email,
+      ip: request.headers.get("x-forwarded-for"),
+      userAgent: request.headers.get("user-agent"),
     })
 
-    if (!user) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
-    }
+    throw createAPIError("Invalid credentials", 401, "INVALID_CREDENTIALS")
+  }
 
-    // Verify password
-    const isValidPassword = await verifyPassword(password, user.password)
-    if (!isValidPassword) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
-    }
-
-    // Generate JWT token
-    const token = generateToken({
+  // Verify password
+  const isValidPassword = await verifyPassword(password, user.password)
+  if (!isValidPassword) {
+    // Log failed login attempt
+    log.security("Failed login attempt - invalid password", {
       userId: user.id,
+      email,
+      ip: request.headers.get("x-forwarded-for"),
+      userAgent: request.headers.get("user-agent"),
+    })
+
+    throw createAPIError("Invalid credentials", 401, "INVALID_CREDENTIALS")
+  }
+
+  // Generate token
+  const token = generateToken({ userId: user.id, email: user.email })
+
+  // Log successful login
+  log.security("Successful login", {
+    userId: user.id,
+    email,
+    ip: request.headers.get("x-forwarded-for"),
+    userAgent: request.headers.get("user-agent"),
+  })
+
+  // Create response
+  const response = NextResponse.json({
+    user: {
+      id: user.id,
       email: user.email,
       role: user.role,
-    })
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+  })
 
-    // Update last login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() },
-    })
+  // Set cookie
+  response.cookies.set("auth-token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  })
 
-    // Log security event
-    await prisma.securityLog.create({
-      data: {
-        userId: user.id,
-        event: "login",
-        ipAddress: request.headers.get("x-forwarded-for") || "unknown",
-        userAgent: request.headers.get("user-agent") || "unknown",
-      },
-    })
-
-    const { password: _, ...userWithoutPassword } = user
-
-    const response = NextResponse.json({
-      message: "Login successful",
-      user: userWithoutPassword,
-    })
-
-    // Set HTTP-only cookie
-    response.cookies.set("auth-token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-    })
-
-    return response
-  } catch (error) {
-    console.error("Login error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
+  return response
 }
+
+export const POST = withErrorHandling(loginHandler, "auth/login")

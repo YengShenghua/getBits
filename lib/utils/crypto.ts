@@ -1,24 +1,32 @@
 export function generateDepositAddress(asset: string, userId: string): string {
-  // In production, this would generate real addresses using crypto libraries
-  const addresses = {
-    BTC: `bc1q${Math.random().toString(36).substring(2, 30)}`,
-    ETH: `0x${Math.random().toString(16).substring(2, 42)}`,
-    USDT: `0x${Math.random().toString(16).substring(2, 42)}`,
-    BNB: `bnb1${Math.random().toString(36).substring(2, 30)}`,
-  }
-
-  return addresses[asset as keyof typeof addresses] || `${asset.toLowerCase()}_${userId}_${Date.now()}`
+  // In production, this would integrate with actual crypto services
+  const prefix = asset === "BTC" ? "bc1" : asset === "ETH" ? "0x" : "T"
+  const hash = Buffer.from(`${userId}-${asset}-${Date.now()}`).toString("hex").slice(0, 32)
+  return `${prefix}${hash}`
 }
 
-export function validateAddress(asset: string, address: string): boolean {
-  // Basic validation - in production, use proper crypto validation libraries
-  const patterns = {
-    BTC: /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/,
-    ETH: /^0x[a-fA-F0-9]{40}$/,
-    USDT: /^0x[a-fA-F0-9]{40}$/,
-    BNB: /^bnb1[a-z0-9]{38}$/,
+export function validateCryptoAddress(address: string, asset: string): boolean {
+  if (!address || !asset) return false
+
+  switch (asset.toUpperCase()) {
+    case "BTC":
+      return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(address)
+    case "ETH":
+      return /^0x[a-fA-F0-9]{40}$/.test(address)
+    case "USDT":
+      return /^0x[a-fA-F0-9]{40}$/.test(address) || /^T[A-Za-z1-9]{33}$/.test(address)
+    default:
+      return address.length > 10 && address.length < 100
+  }
+}
+
+export function estimateTransactionFee(asset: string, amount: number): number {
+  const feeRates = {
+    BTC: 0.0001,
+    ETH: 0.002,
+    USDT: 1.0,
+    USD: 2.5,
   }
 
-  const pattern = patterns[asset as keyof typeof patterns]
-  return pattern ? pattern.test(address) : address.length > 10
+  return feeRates[asset as keyof typeof feeRates] || 0.001
 }
