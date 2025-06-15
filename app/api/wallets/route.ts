@@ -14,9 +14,37 @@ export async function GET(request: NextRequest) {
       orderBy: { asset: "asc" },
     })
 
+    // If user has no wallets, create default ones
+    if (wallets.length === 0) {
+      const defaultAssets = ["BTC", "ETH", "USDT", "BNB"]
+      const defaultWallets = await Promise.all(
+        defaultAssets.map((asset) =>
+          prisma.wallet.create({
+            data: {
+              userId: user.id,
+              asset,
+              balance: asset === "BTC" && user.signupBonus > 0 ? user.signupBonus : 0,
+              usdPrice: getAssetPrice(asset),
+            },
+          }),
+        ),
+      )
+      return NextResponse.json({ wallets: defaultWallets })
+    }
+
     return NextResponse.json({ wallets })
   } catch (error) {
-    console.error("Wallets fetch error:", error)
+    console.error("Wallets API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+function getAssetPrice(asset: string): number {
+  const prices: Record<string, number> = {
+    BTC: 43250,
+    ETH: 2650,
+    USDT: 1,
+    BNB: 315,
+  }
+  return prices[asset] || 0
 }

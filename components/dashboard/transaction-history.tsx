@@ -5,27 +5,85 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Gift, Loader2 } from "lucide-react"
-import { useTransactions } from "@/hooks/use-api"
-import { useState } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
+import { useAuth } from "@/components/providers/auth-provider"
+
+interface Transaction {
+  id: string
+  type: string
+  asset: string
+  amount: number
+  status: string
+  createdAt: string
+  description?: string
+}
+
+interface TransactionResponse {
+  transactions: Transaction[]
+  pagination: {
+    page: number
+    pages: number
+    total: number
+  }
+}
 
 export function TransactionHistory() {
   const [activeTab, setActiveTab] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [pagination, setPagination] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const {
-    data: transactionResponse,
-    loading,
-    error,
-    refetch,
-  } = useTransactions({
-    type: activeTab === "all" ? undefined : activeTab,
-    page: currentPage,
-  })
+  const { user } = useAuth()
 
-  const transactions = transactionResponse?.transactions || []
-  const pagination = transactionResponse?.pagination
+  // Memoize the fetch function to prevent recreation on every render
+  const fetchTransactions = useCallback(async () => {
+    if (!user) {
+      setError("Not authenticated")
+      setLoading(false)
+      return
+    }
 
-  const getIcon = (type: string) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const queryParams = new URLSearchParams()
+      if (activeTab !== "all") queryParams.append("type", activeTab)
+      queryParams.append("page", currentPage.toString())
+
+      const endpoint = `/api/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
+
+      const response = await fetch(endpoint, {
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data: TransactionResponse = await response.json()
+      setTransactions(data.transactions || [])
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+      setTransactions([])
+      setPagination(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [user, activeTab, currentPage]) // Only depend on these specific values
+
+  // Fetch data when dependencies change
+  useEffect(() => {
+    fetchTransactions()
+  }, [fetchTransactions])
+
+  const getIcon = useCallback((type: string) => {
     switch (type.toLowerCase()) {
       case "deposit":
         return <ArrowDownLeft className="h-4 w-4 text-green-400" />
@@ -38,9 +96,9 @@ export function TransactionHistory() {
       default:
         return <RefreshCw className="h-4 w-4" />
     }
-  }
+  }, [])
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = useCallback((status: string) => {
     switch (status.toLowerCase()) {
       case "completed":
       case "success":
@@ -69,23 +127,43 @@ export function TransactionHistory() {
           </Badge>
         )
     }
-  }
+  }, [])
 
-  const handleTabChange = (value: string) => {
+  const handleTabChange = useCallback((value: string) => {
     setActiveTab(value)
-    setCurrentPage(1)
-  }
+    setCurrentPage(1) // Reset to first page when changing tabs
+  }, [])
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
-  }
+  const handlePreviousPage = useCallback(() => {
+    setCurrentPage((prev) => Math.max(1, prev - 1))
+  }, [])
 
-  const formatAmount = (amount: number, asset: string) => {
+  const handleNextPage = useCallback(() => {
+    if (pagination) {
+      setCurrentPage((prev) => Math.min(pagination.pages, prev + 1))
+    }
+  }, [pagination])
+
+  const formatDate = useCallback((dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleString()
+    } catch {
+      return dateString
+    }
+  }, [])
+
+  const formatAmount = useCallback((amount: number, asset: string) => {
     if (asset.includes("/")) {
       return `${amount} ${asset.split("/")[0]}`
     }
     return `${amount} ${asset}`
-  }
+  }, [])
+
+  // Filter transactions for specific tabs (client-side filtering as fallback)
+  const filteredTransactions = useMemo(() => {
+    if (activeTab === "all") return transactions
+    return transactions.filter((t) => t.type.toLowerCase() === activeTab.toLowerCase())
+  }, [transactions, activeTab])
 
   return (
     <div className="space-y-6">
@@ -97,8 +175,14 @@ export function TransactionHistory() {
               View all your deposits, withdrawals, trades, and bonuses
             </CardDescription>
           </div>
-          <Button onClick={refetch} variant="ghost" size="sm" className="text-[#FFD700] hover:bg-[#FFD700]/10">
-            <RefreshCw className="h-4 w-4" />
+          <Button
+            onClick={fetchTransactions}
+            variant="ghost"
+            size="sm"
+            className="text-[#FFD700] hover:bg-[#FFD700]/10"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </CardHeader>
         <CardContent>
@@ -145,16 +229,16 @@ export function TransactionHistory() {
               ) : error ? (
                 <div className="text-center p-8">
                   <p className="text-red-400 mb-4">Error loading transactions: {error}</p>
-                  <Button onClick={refetch} variant="outline" className="btn-dark-gold">
+                  <Button onClick={fetchTransactions} variant="outline" className="btn-dark-gold">
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Retry
                   </Button>
                 </div>
-              ) : transactions.length === 0 ? (
+              ) : filteredTransactions.length === 0 ? (
                 <div className="text-center py-8 text-white/60">No transactions found for this category.</div>
               ) : (
                 <>
-                  {transactions.map((transaction: any) => (
+                  {filteredTransactions.map((transaction) => (
                     <div
                       key={transaction.id}
                       className={`flex items-center justify-between p-4 rounded-lg bg-black/30 border ${
@@ -167,7 +251,9 @@ export function TransactionHistory() {
                         {getIcon(transaction.type)}
                         <div>
                           <div
-                            className={`font-medium capitalize ${transaction.type === "bonus" ? "text-[#FFD700]" : "text-white"}`}
+                            className={`font-medium capitalize ${
+                              transaction.type === "bonus" ? "text-[#FFD700]" : "text-white"
+                            }`}
                           >
                             {transaction.type} - {transaction.asset}
                           </div>
@@ -197,8 +283,8 @@ export function TransactionHistory() {
                       </div>
                       <div className="flex space-x-2">
                         <Button
-                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
+                          onClick={handlePreviousPage}
+                          disabled={currentPage === 1 || loading}
                           variant="outline"
                           size="sm"
                           className="btn-dark-gold"
@@ -206,8 +292,8 @@ export function TransactionHistory() {
                           Previous
                         </Button>
                         <Button
-                          onClick={() => setCurrentPage((prev) => Math.min(pagination.pages, prev + 1))}
-                          disabled={currentPage === pagination.pages}
+                          onClick={handleNextPage}
+                          disabled={currentPage === pagination.pages || loading}
                           variant="outline"
                           size="sm"
                           className="btn-dark-gold"

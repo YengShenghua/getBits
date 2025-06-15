@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DepositInterface } from "@/components/transactions/deposit-interface"
@@ -10,6 +10,10 @@ import { TransactionHistory } from "@/components/dashboard/transaction-history"
 export function TransactionManagement() {
   const [activeTab, setActiveTab] = useState("deposit")
 
+  const handleTabChange = useCallback((value: string) => {
+    setActiveTab(value)
+  }, [])
+
   return (
     <div className="space-y-6">
       <Card className="premium-card border-[#FFD700]/20">
@@ -18,7 +22,7 @@ export function TransactionManagement() {
           <CardDescription className="text-white/70">Deposit, withdraw, and track your transactions</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="deposit" className="w-full" onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-black/50 border border-[#FFD700]/20 mb-6">
               <TabsTrigger
                 value="deposit"

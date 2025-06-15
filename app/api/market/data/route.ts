@@ -1,24 +1,36 @@
 import { NextResponse } from "next/server"
-
-// Mock market data - in production, this would fetch from a real crypto API
-const mockMarketData = [
-  { symbol: "BTC/USDT", price: 43250.5, change: "+2.4%", volume: "1.2B", isUp: true },
-  { symbol: "ETH/USDT", price: 2650.75, change: "+1.8%", volume: "890M", isUp: true },
-  { symbol: "BNB/USDT", price: 315.2, change: "-0.5%", volume: "245M", isUp: false },
-  { symbol: "ADA/USDT", price: 0.485, change: "+3.2%", volume: "180M", isUp: true },
-  { symbol: "SOL/USDT", price: 98.45, change: "+5.1%", volume: "320M", isUp: true },
-  { symbol: "DOT/USDT", price: 7.85, change: "-1.2%", volume: "95M", isUp: false },
-]
+import { prisma } from "@/lib/prisma"
 
 export async function GET() {
   try {
-    // In production, you would fetch from CoinGecko, Binance API, etc.
-    // const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1')
-    // const marketData = await response.json()
+    // Try to get market data from database
+    let marketData = await prisma.marketData.findMany({
+      orderBy: { symbol: "asc" },
+    })
 
-    return NextResponse.json({ marketData: mockMarketData })
+    // If no data exists, create initial data
+    if (marketData.length === 0) {
+      const initialData = [
+        { symbol: "BTC/USDT", price: 43250.5, change: "+2.4%", volume: "1.2B", isUp: true },
+        { symbol: "ETH/USDT", price: 2650.75, change: "+1.8%", volume: "890M", isUp: true },
+        { symbol: "BNB/USDT", price: 315.2, change: "-0.5%", volume: "245M", isUp: false },
+        { symbol: "ADA/USDT", price: 0.485, change: "+3.2%", volume: "180M", isUp: true },
+        { symbol: "SOL/USDT", price: 98.45, change: "+5.1%", volume: "320M", isUp: true },
+        { symbol: "DOT/USDT", price: 7.85, change: "-1.2%", volume: "95M", isUp: false },
+      ]
+
+      marketData = await Promise.all(initialData.map((data) => prisma.marketData.create({ data })))
+    }
+
+    // Simulate price updates (in production, this would come from real APIs)
+    const updatedData = marketData.map((item) => ({
+      ...item,
+      price: item.price * (0.98 + Math.random() * 0.04), // ±2% variation
+    }))
+
+    return NextResponse.json({ marketData: updatedData })
   } catch (error) {
-    console.error("Market data fetch error:", error)
+    console.error("Market data API error:", error)
     return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 })
   }
 }

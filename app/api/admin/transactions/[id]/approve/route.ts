@@ -5,15 +5,16 @@ import { prisma } from "@/lib/prisma"
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await getCurrentUser(request)
-    if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    if (!user || user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { notes } = await request.json()
-    const transactionId = params.id
+    const { id } = params
+    const body = await request.json()
+    const { notes } = body
 
     const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
+      where: { id },
       include: { user: true },
     })
 
@@ -21,49 +22,75 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
     }
 
-    if (transaction.status !== "PENDING" && transaction.status !== "FLAGGED") {
-      return NextResponse.json({ error: "Transaction cannot be approved" }, { status: 400 })
+    if (transaction.status !== "PENDING") {
+      return NextResponse.json({ error: "Transaction already processed" }, { status: 400 })
     }
 
-    // Update transaction status
-    await prisma.transaction.update({
-      where: { id: transactionId },
-      data: {
-        status: "COMPLETED",
-        adminNotes: notes,
-        processedAt: new Date(),
-      },
-    })
-
-    // For deposits, add to wallet balance
-    if (transaction.type === "DEPOSIT") {
-      await prisma.wallet.updateMany({
-        where: { userId: transaction.userId, asset: transaction.asset },
-        data: { balance: { increment: transaction.amount } },
+    await prisma.$transaction(async (tx) => {
+      // Update transaction
+      await tx.transaction.update({
+        where: { id },
+        data: {
+          status: "COMPLETED",
+          reviewedBy: user.id,
+          reviewedAt: new Date(),
+          notes,
+        },
       })
-    }
 
-    // For withdrawals, remove from locked balance
-    if (transaction.type === "WITHDRAWAL") {
-      await prisma.wallet.updateMany({
-        where: { userId: transaction.userId, asset: transaction.asset },
-        data: { locked: { decrement: transaction.amount } },
-      })
-    }
+      // Process based on transaction type
+      if (transaction.type === "WITHDRAWAL") {
+        // For withdrawals, remove from locked and complete
+        await tx.wallet.updateMany({
+          where: {
+            userId: transaction.userId,
+            asset: transaction.asset,
+          },
+          data: {
+            locked: { decrement: transaction.amount },
+          },
+        })
+      } else if (transaction.type === "DEPOSIT") {
+        // For deposits, add to balance
+        await tx.wallet.upsert({
+          where: {
+            userId_asset: {
+              userId: transaction.userId,
+              asset: transaction.asset,
+            },
+          },
+          update: {
+            balance: { increment: transaction.amount },
+          },
+          create: {
+            userId: transaction.userId,
+            asset: transaction.asset,
+            balance: transaction.amount,
+            usdPrice: getAssetPrice(transaction.asset),
+          },
+        })
 
-    // Create notification
-    await prisma.notification.create({
-      data: {
-        userId: transaction.userId,
-        title: `${transaction.type} Approved`,
-        message: `Your ${transaction.type.toLowerCase()} of ${transaction.amount} ${transaction.asset} has been approved.`,
-        type: "success",
-      },
+        // Mark user as having deposited
+        await tx.user.update({
+          where: { id: transaction.userId },
+          data: { hasDeposited: true },
+        })
+      }
     })
 
     return NextResponse.json({ message: "Transaction approved successfully" })
   } catch (error) {
-    console.error("Transaction approval error:", error)
+    console.error("Approve transaction error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+function getAssetPrice(asset: string): number {
+  const prices: Record<string, number> = {
+    BTC: 43250,
+    ETH: 2650,
+    USDT: 1,
+    BNB: 315,
+  }
+  return prices[asset] || 0
 }

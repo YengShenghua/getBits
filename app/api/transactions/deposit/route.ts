@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { generateDepositAddress } from "@/lib/utils/crypto"
-import { assessTransactionRisk } from "@/lib/utils/risk"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,83 +9,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { asset, amount, method } = await request.json()
+    const body = await request.json()
+    const { asset, amount, method, address } = body
 
+    // Validate input
     if (!asset || !amount || amount <= 0) {
-      return NextResponse.json({ error: "Invalid input" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid deposit data" }, { status: 400 })
     }
 
-    // Get recent transactions for risk assessment
-    const recentTransactions = await prisma.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    })
-
-    // Assess risk
-    const riskAssessment = assessTransactionRisk(
-      amount,
-      asset,
-      {
-        ...user,
-        recentTransactions,
-      },
-      method,
-    )
-
-    // Generate deposit address for crypto
-    let depositAddress = null
-    if (method === "crypto") {
-      depositAddress = generateDepositAddress(asset, user.id)
-    }
-
-    // Create transaction
+    // Create deposit transaction
     const transaction = await prisma.transaction.create({
       data: {
         userId: user.id,
         type: "DEPOSIT",
         asset,
-        amount,
-        method,
-        depositAddress,
-        riskScore: riskAssessment.score,
-        riskFlags: riskAssessment.flags,
-        status:
-          riskAssessment.recommendation === "approve"
-            ? "PROCESSING"
-            : riskAssessment.recommendation === "review"
-              ? "PENDING"
-              : "FLAGGED",
+        amount: Number.parseFloat(amount),
+        description: `${method} deposit`,
+        toAddress: address,
+        status: "PENDING",
       },
     })
 
-    // For approved transactions, simulate processing
-    if (riskAssessment.recommendation === "approve" && method !== "crypto") {
-      // Simulate instant processing for cards/bank (in production, this would be async)
-      setTimeout(async () => {
-        await prisma.transaction.update({
-          where: { id: transaction.id },
-          data: { status: "COMPLETED", processedAt: new Date() },
-        })
-
-        // Update wallet balance
-        await prisma.wallet.updateMany({
-          where: { userId: user.id, asset },
-          data: { balance: { increment: amount } },
-        })
-      }, 2000)
+    // For demo purposes, auto-approve small deposits
+    if (amount < 100) {
+      await processDeposit(transaction.id, user.id, asset, Number.parseFloat(amount))
     }
 
     return NextResponse.json({
-      message:
-        method === "crypto"
-          ? `Please send ${amount} ${asset} to the provided address`
-          : `Deposit of ${amount} ${asset} is being processed`,
       transaction,
-      depositAddress,
+      message: "Deposit request created successfully",
     })
   } catch (error) {
-    console.error("Deposit error:", error)
+    console.error("Deposit API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+async function processDeposit(transactionId: string, userId: string, asset: string, amount: number) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Update transaction status
+      await tx.transaction.update({
+        where: { id: transactionId },
+        data: { status: "COMPLETED" },
+      })
+
+      // Update wallet balance
+      await tx.wallet.upsert({
+        where: {
+          userId_asset: {
+            userId,
+            asset,
+          },
+        },
+        update: {
+          balance: { increment: amount },
+        },
+        create: {
+          userId,
+          asset,
+          balance: amount,
+          usdPrice: getAssetPrice(asset),
+        },
+      })
+
+      // Mark user as having deposited
+      await tx.user.update({
+        where: { id: userId },
+        data: { hasDeposited: true },
+      })
+    })
+  } catch (error) {
+    console.error("Process deposit error:", error)
+  }
+}
+
+function getAssetPrice(asset: string): number {
+  const prices: Record<string, number> = {
+    BTC: 43250,
+    ETH: 2650,
+    USDT: 1,
+    BNB: 315,
+  }
+  return prices[asset] || 0
 }
