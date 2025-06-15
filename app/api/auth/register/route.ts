@@ -4,7 +4,7 @@ import { hashPassword, generateToken } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, firstName, lastName } = await request.json()
+    const { email, password, firstName, lastName, referralCode } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
@@ -23,32 +23,35 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await hashPassword(password)
 
     // Generate referral code
-    const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase()
+    const userReferralCode = "GB" + Math.random().toString(36).substring(2, 8).toUpperCase()
 
     // Create user
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
-        firstName,
-        lastName,
-        referralCode,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        referralCode: userReferralCode,
         signupBonus: 0.002, // 0.002 BTC signup bonus
+        usedReferralCode: referralCode || null,
       },
     })
 
     // Create initial wallets
     const assets = ["BTC", "ETH", "USDT", "USD"]
+    const wallets = []
+
     for (const asset of assets) {
-      await prisma.wallet.create({
+      const wallet = await prisma.wallet.create({
         data: {
           userId: user.id,
           asset,
-          balance: asset === "BTC" ? 0.002 : 0,
+          balance: asset === "BTC" ? 0.002 : 0, // Signup bonus
         },
-      });
+      })
+      wallets.push(wallet)
     }
-    
 
     // Generate token
     const token = generateToken({ userId: user.id, email: user.email })
@@ -61,6 +64,14 @@ export async function POST(request: NextRequest) {
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
+        referralCode: user.referralCode,
+        kycStatus: user.kycStatus,
+        isVerified: user.isVerified,
+        signupBonus: user.signupBonus,
+        referralBonus: user.referralBonus,
+        hasDeposited: user.hasDeposited,
+        hasTraded: user.hasTraded,
+        wallets: wallets,
       },
     })
 
@@ -70,6 +81,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
     })
 
     return response

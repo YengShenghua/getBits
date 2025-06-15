@@ -15,6 +15,8 @@ interface User {
   hasDeposited: boolean
   hasTraded: boolean
   role: "USER" | "ADMIN" | "SUPER_ADMIN"
+  firstName?: string
+  lastName?: string
   wallets?: Array<{
     id: string
     asset: string
@@ -27,7 +29,13 @@ interface User {
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, phone?: string, referralCode?: string) => Promise<void>
+  signup: (
+    email: string,
+    password: string,
+    firstName?: string,
+    lastName?: string,
+    referralCode?: string,
+  ) => Promise<void>
   logout: () => void
   isLoading: boolean
   isAdmin: boolean
@@ -44,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await fetch("/api/auth/me", {
         credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
 
       if (response.ok) {
@@ -86,13 +97,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user)
   }
 
-  const signup = async (email: string, password: string, phone?: string, referralCode?: string) => {
+  const signup = async (
+    email: string,
+    password: string,
+    firstName?: string,
+    lastName?: string,
+    referralCode?: string,
+  ) => {
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email, password, phone, referralCode }),
+      credentials: "include",
+      body: JSON.stringify({ email, password, firstName, lastName, referralCode }),
     })
 
     const data = await response.json()
@@ -101,8 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(data.error || "Signup failed")
     }
 
-    // Auto-login after signup
-    await login(email, password)
+    setUser(data.user)
   }
 
   const logout = async () => {

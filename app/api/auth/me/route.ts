@@ -9,7 +9,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    return NextResponse.json({ user })
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        referralCode: user.referralCode,
+        kycStatus: user.kycStatus,
+        isVerified: user.isVerified,
+        signupBonus: user.signupBonus,
+        referralBonus: user.referralBonus,
+        hasDeposited: user.hasDeposited,
+        hasTraded: user.hasTraded,
+        wallets: user.wallets,
+      },
+    })
   } catch (error) {
     console.error("Auth check error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

@@ -1,77 +1,67 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifyPassword, generateToken } from "@/lib/auth"
-import { withErrorHandling, createAPIError } from "@/lib/api-error-handler"
-import { log } from "@/lib/logger"
 
-async function loginHandler(request: NextRequest) {
-  const { email, password } = await request.json()
+export async function POST(request: NextRequest) {
+  try {
+    const { email, password } = await request.json()
 
-  if (!email || !password) {
-    throw createAPIError("Email and password are required", 400, "MISSING_CREDENTIALS")
-  }
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+    }
 
-  // Find user
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
-  })
-
-  if (!user) {
-    // Log failed login attempt
-    log.security("Failed login attempt - user not found", {
-      email,
-      ip: request.headers.get("x-forwarded-for"),
-      userAgent: request.headers.get("user-agent"),
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      include: {
+        wallets: true,
+      },
     })
 
-    throw createAPIError("Invalid credentials", 401, "INVALID_CREDENTIALS")
-  }
+    if (!user) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
 
-  // Verify password
-  const isValidPassword = await verifyPassword(password, user.password)
-  if (!isValidPassword) {
-    // Log failed login attempt
-    log.security("Failed login attempt - invalid password", {
-      userId: user.id,
-      email,
-      ip: request.headers.get("x-forwarded-for"),
-      userAgent: request.headers.get("user-agent"),
+    // Verify password
+    const isValidPassword = await verifyPassword(password, user.password)
+    if (!isValidPassword) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Generate token
+    const token = generateToken({ userId: user.id, email: user.email })
+
+    // Create response
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        referralCode: user.referralCode,
+        kycStatus: user.kycStatus,
+        isVerified: user.isVerified,
+        signupBonus: user.signupBonus,
+        referralBonus: user.referralBonus,
+        hasDeposited: user.hasDeposited,
+        hasTraded: user.hasTraded,
+        wallets: user.wallets,
+      },
     })
 
-    throw createAPIError("Invalid credentials", 401, "INVALID_CREDENTIALS")
+    // Set cookie
+    response.cookies.set("auth-token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    })
+
+    return response
+  } catch (error) {
+    console.error("Login error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-
-  // Generate token
-  const token = generateToken({ userId: user.id, email: user.email })
-
-  // Log successful login
-  log.security("Successful login", {
-    userId: user.id,
-    email,
-    ip: request.headers.get("x-forwarded-for"),
-    userAgent: request.headers.get("user-agent"),
-  })
-
-  // Create response
-  const response = NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    },
-  })
-
-  // Set cookie
-  response.cookies.set("auth-token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  })
-
-  return response
 }
-
-export const POST = withErrorHandling(loginHandler, "auth/login")
