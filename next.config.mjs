@@ -1,11 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Updated: moved from experimental.serverComponentsExternalPackages
-  serverExternalPackages: ['@prisma/client', 'bcryptjs', 'winston'],
+  // External packages for server-side only
+  serverExternalPackages: ['@prisma/client', 'bcryptjs'],
   
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Don't resolve Node.js modules on the client to prevent build errors
       config.resolve.fallback = {
         fs: false,
         net: false,
@@ -24,15 +23,9 @@ const nextConfig = {
       }
     }
 
-    // External packages for server-side only
-    if (isServer) {
-      config.externals.push('@prisma/client', 'bcryptjs')
-    }
-
     return config
   },
   
-  // Build configuration
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -40,15 +33,14 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   
-  // Image optimization
   images: {
     unoptimized: true,
     domains: ['localhost'],
   },
   
-  // Enable experimental features if needed
+  // Remove output: 'standalone' for Vercel deployment
   experimental: {
-    // Add any experimental features here if needed in the future
+    serverComponentsExternalPackages: ['@prisma/client'],
   },
 }
 

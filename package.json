@@ -2,6 +2,7 @@
   "name": "getbits-crypto-exchange",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.2.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -16,12 +17,12 @@
   },
   "dependencies": {
     "@prisma/client": "latest",
-    "@radix-ui/react-accordion": "^1.1.2",
-    "@radix-ui/react-alert-dialog": "^1.0.5",
-    "@radix-ui/react-avatar": "^1.0.4",
-    "@radix-ui/react-checkbox": "^1.0.4",
+    "@radix-ui/react-accordion": "1.1.2",
+    "@radix-ui/react-alert-dialog": "1.0.5",
+    "@radix-ui/react-avatar": "1.0.4",
+    "@radix-ui/react-checkbox": "1.0.4",
     "@radix-ui/react-dialog": "latest",
-    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-dropdown-menu": "2.0.6",
     "@radix-ui/react-label": "latest",
     "@radix-ui/react-select": "latest",
     "@radix-ui/react-slot": "latest",
@@ -43,18 +44,22 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.5",
+    "@types/bcryptjs": "2.4.6",
+    "@types/jsonwebtoken": "9.0.5",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "autoprefixer": "^10.0.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.0.4",
+    "autoprefixer": "10.4.16",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.16",
     "postcss": "^8.5",
-    "prisma": "^5.7.1",
-    "tailwindcss": "^3.3.0",
-    "tsx": "^4.6.2",
+    "prisma": "5.7.1",
+    "tailwindcss": "3.4.0",
+    "tsx": "4.6.2",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.17.0",
+    "npm": ">=9.0.0"
   }
 }
