@@ -19,6 +19,7 @@ model User {
   hasDeposited Boolean @default(false)
   hasTraded    Boolean @default(false)
   signupBonus  Float   @default(0.002)
+  referralCode String?
   
   // KYC fields
   kycStatus    KycStatus @default(PENDING)

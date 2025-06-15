@@ -39,17 +39,16 @@ export async function POST(request: NextRequest) {
 
     // Create initial wallets
     const assets = ["BTC", "ETH", "USDT", "USD"]
-    await Promise.all(
-      assets.map((asset) =>
-        prisma.wallet.create({
-          data: {
-            userId: user.id,
-            asset,
-            balance: asset === "BTC" ? 0.002 : 0, // Signup bonus
-          },
-        }),
-      ),
-    )
+    for (const asset of assets) {
+      await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          asset,
+          balance: asset === "BTC" ? 0.002 : 0,
+        },
+      });
+    }
+    
 
     // Generate token
     const token = generateToken({ userId: user.id, email: user.email })
