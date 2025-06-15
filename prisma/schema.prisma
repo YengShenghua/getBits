@@ -132,8 +132,8 @@ model MarketData {
   id       String @id @default(auto()) @map("_id") @db.ObjectId
   symbol   String @unique
   price    Float
-  change   String
-  volume   String
+  change   String  // Keep as string for display (e.g., "+2.4%")
+  volume   String  // Keep as string for display (e.g., "1.2B")
   isUp     Boolean
   
   updatedAt DateTime @updatedAt @default(now())

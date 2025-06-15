@@ -73,7 +73,7 @@ async function main() {
     },
   })
 
-  // Create market data
+  // Create market data with correct schema
   const marketData = [
     { symbol: "BTC/USDT", price: 43250.5, change: "+2.4%", volume: "1.2B", isUp: true },
     { symbol: "ETH/USDT", price: 2650.75, change: "+1.8%", volume: "890M", isUp: true },
@@ -92,6 +92,8 @@ async function main() {
   }
 
   console.log("Database seeded successfully!")
+  console.log("Admin: admin@getbits.com / admin123")
+  console.log("Demo: demo@getbits.com / demo123")
 }
 
 main()

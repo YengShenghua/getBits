@@ -19,14 +19,31 @@ export async function GET() {
         { symbol: "DOT/USDT", price: 7.85, change: "-1.2%", volume: "95M", isUp: false },
       ]
 
-      marketData = await Promise.all(initialData.map((data) => prisma.marketData.create({ data })))
+      // Create market data entries
+      for (const data of initialData) {
+        await prisma.marketData.create({ data })
+      }
+
+      // Fetch the created data
+      marketData = await prisma.marketData.findMany({
+        orderBy: { symbol: "asc" },
+      })
     }
 
     // Simulate price updates (in production, this would come from real APIs)
-    const updatedData = marketData.map((item) => ({
-      ...item,
-      price: item.price * (0.98 + Math.random() * 0.04), // ±2% variation
-    }))
+    const updatedData = marketData.map((item) => {
+      const priceVariation = 0.98 + Math.random() * 0.04 // ±2% variation
+      const newPrice = item.price * priceVariation
+      const changePercent = (((newPrice - item.price) / item.price) * 100).toFixed(1)
+      const isUp = newPrice > item.price
+
+      return {
+        ...item,
+        price: Number.parseFloat(newPrice.toFixed(2)),
+        change: `${isUp ? "+" : ""}${changePercent}%`,
+        isUp,
+      }
+    })
 
     return NextResponse.json({ marketData: updatedData })
   } catch (error) {
