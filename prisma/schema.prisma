@@ -15,13 +15,16 @@ model User {
   name      String?
   role      Role     @default(USER)
   isActive  Boolean  @default(true)
-  
+  firstName String?
+  lastName String?
+
   // Profile fields
   hasDeposited Boolean @default(false)
   hasTraded    Boolean @default(false)
   signupBonus  Float   @default(0.002)
   referralCode String?
-  
+  usedReferralCode String?
+
   // KYC fields
   kycStatus    KycStatus @default(PENDING)
   kycLevel     Int       @default(0)
