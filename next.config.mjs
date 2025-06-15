@@ -1,15 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // External packages for server-side only
-  serverExternalPackages: ['@prisma/client', 'bcryptjs'],
-  
+  experimental: {
+    serverComponentsExternalPackages: ['bcryptjs', '@prisma/client']
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
+        ...config.resolve.fallback,
         fs: false,
         net: false,
-        dns: false,
-        child_process: false,
         tls: false,
         crypto: false,
         stream: false,
@@ -22,26 +21,18 @@ const nextConfig = {
         path: false,
       }
     }
-
     return config
   },
-  
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
   },
-  
   images: {
     unoptimized: true,
-    domains: ['localhost'],
   },
-  
-  // Remove output: 'standalone' for Vercel deployment
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
+  output: 'standalone'
 }
 
 export default nextConfig

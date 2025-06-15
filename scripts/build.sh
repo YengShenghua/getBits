@@ -8,7 +8,7 @@ rm -f pnpm-lock.yaml yarn.lock
 
 # Use npm for installation
 echo "📦 Installing dependencies with npm..."
-npm ci --legacy-peer-deps
+npm install --legacy-peer-deps
 
 # Generate Prisma client
 echo "🔧 Generating Prisma client..."
