@@ -25,18 +25,26 @@ export async function POST(request: NextRequest) {
     // Generate referral code
     const userReferralCode = "GB" + Math.random().toString(36).substring(2, 8).toUpperCase()
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        firstName: firstName || "",
-        lastName: lastName || "",
-        referralCode: userReferralCode,
-        signupBonus: 0.002, // 0.002 BTC signup bonus
-        usedReferralCode: referralCode || null,
-      },
-    })
+    let user
+    try {
+      // Create user
+      user = await prisma.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: hashedPassword,
+          firstName: firstName || "",
+          lastName: lastName || "",
+          referralCode: userReferralCode,
+          signupBonus: 0.002,
+          usedReferralCode: referralCode || null,
+        },
+      })
+
+      console.log("User created successfully:", user.id)
+    } catch (createError) {
+      console.error("User creation error:", createError)
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    }
 
     // Create initial wallets
     const assets = ["BTC", "ETH", "USDT", "USD"]
