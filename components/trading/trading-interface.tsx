@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,45 +8,109 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp } from "lucide-react"
+import { TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
-const orderBookData = {
-  asks: [
-    { price: 43275.5, amount: 0.125, total: 5409.44 },
-    { price: 43270.25, amount: 0.25, total: 10817.56 },
-    { price: 43265.0, amount: 0.18, total: 7787.7 },
-    { price: 43260.75, amount: 0.32, total: 13843.44 },
-    { price: 43255.5, amount: 0.095, total: 4109.27 },
-  ],
-  bids: [
-    { price: 43245.25, amount: 0.15, total: 6486.79 },
-    { price: 43240.0, amount: 0.28, total: 12107.2 },
-    { price: 43235.75, amount: 0.2, total: 8647.15 },
-    { price: 43230.5, amount: 0.35, total: 15130.68 },
-    { price: 43225.25, amount: 0.12, total: 5187.03 },
-  ],
+interface MarketData {
+  symbol: string
+  price: number
+  change: string
+  volume: string
+  isUp: boolean
 }
 
-const recentTrades = [
-  { price: 43250.5, amount: 0.025, time: "14:32:15", type: "buy" },
-  { price: 43248.75, amount: 0.15, time: "14:32:10", type: "sell" },
-  { price: 43252.0, amount: 0.08, time: "14:32:05", type: "buy" },
-  { price: 43249.25, amount: 0.2, time: "14:32:00", type: "sell" },
-  { price: 43251.75, amount: 0.045, time: "14:31:55", type: "buy" },
-]
+interface Order {
+  id: string
+  symbol: string
+  side: string
+  type: string
+  quantity: number
+  price?: number
+  status: string
+  createdAt: string
+}
+
+interface Wallet {
+  asset: string
+  balance: number
+  locked: number
+}
 
 export function TradingInterface() {
+  const [selectedPair, setSelectedPair] = useState("BTC/USDT")
+  const [marketData, setMarketData] = useState<MarketData[]>([])
+  const [currentPrice, setCurrentPrice] = useState(0)
+  const [wallets, setWallets] = useState<Wallet[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+
   const [buyOrder, setBuyOrder] = useState({
-    price: "43250.50",
+    price: "",
     amount: "",
     orderType: "market",
   })
 
   const [sellOrder, setSellOrder] = useState({
-    price: "43250.50",
+    price: "",
     amount: "",
     orderType: "market",
   })
+
+  // Fetch market data
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const response = await fetch("/api/market/data")
+      const data = await response.json()
+      if (data.marketData) {
+        setMarketData(data.marketData)
+        const current = data.marketData.find((m: MarketData) => m.symbol === selectedPair)
+        if (current) {
+          setCurrentPrice(current.price)
+          setBuyOrder((prev) => ({ ...prev, price: current.price.toString() }))
+          setSellOrder((prev) => ({ ...prev, price: current.price.toString() }))
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch market data:", error)
+    }
+  }, [selectedPair])
+
+  // Fetch user wallets
+  const fetchWallets = useCallback(async () => {
+    try {
+      const response = await fetch("/api/wallets")
+      const data = await response.json()
+      if (data.wallets) {
+        setWallets(data.wallets)
+      }
+    } catch (error) {
+      console.error("Failed to fetch wallets:", error)
+    }
+  }, [])
+
+  // Fetch user orders
+  const fetchOrders = useCallback(async () => {
+    try {
+      const response = await fetch("/api/trading/orders")
+      const data = await response.json()
+      if (data.orders) {
+        setOrders(data.orders)
+      }
+    } catch (error) {
+      console.error("Failed to fetch orders:", error)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMarketData()
+    fetchWallets()
+    fetchOrders()
+
+    // Auto-refresh market data every 30 seconds
+    const interval = setInterval(fetchMarketData, 30000)
+    return () => clearInterval(interval)
+  }, [fetchMarketData, fetchWallets, fetchOrders])
 
   const handleBuyOrderChange = (field: string, value: string) => {
     setBuyOrder((prev) => ({ ...prev, [field]: value }))
@@ -62,65 +126,160 @@ export function TradingInterface() {
     return (priceNum * amountNum).toFixed(2)
   }
 
+  const getBalance = (asset: string) => {
+    const wallet = wallets.find((w) => w.asset === asset)
+    return wallet ? wallet.balance : 0
+  }
+
+  const placeBuyOrder = async () => {
+    if (!buyOrder.amount) {
+      toast({ title: "Error", description: "Please enter amount", variant: "destructive" })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch("/api/trading/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: selectedPair,
+          side: "BUY",
+          type: buyOrder.orderType.toUpperCase(),
+          quantity: Number.parseFloat(buyOrder.amount),
+          price: buyOrder.orderType === "market" ? null : Number.parseFloat(buyOrder.price),
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast({ title: "Success", description: "Buy order placed successfully" })
+        setBuyOrder({ ...buyOrder, amount: "" })
+        fetchWallets()
+        fetchOrders()
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" })
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to place order", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const placeSellOrder = async () => {
+    if (!sellOrder.amount) {
+      toast({ title: "Error", description: "Please enter amount", variant: "destructive" })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch("/api/trading/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: selectedPair,
+          side: "SELL",
+          type: sellOrder.orderType.toUpperCase(),
+          quantity: Number.parseFloat(sellOrder.amount),
+          price: sellOrder.orderType === "market" ? null : Number.parseFloat(sellOrder.price),
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast({ title: "Success", description: "Sell order placed successfully" })
+        setSellOrder({ ...sellOrder, amount: "" })
+        fetchWallets()
+        fetchOrders()
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" })
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to place order", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const cancelOrder = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/trading/orders/${orderId}/cancel`, {
+        method: "POST",
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast({ title: "Success", description: "Order cancelled successfully" })
+        fetchOrders()
+        fetchWallets()
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" })
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to cancel order", variant: "destructive" })
+    }
+  }
+
+  const currentMarket = marketData.find((m) => m.symbol === selectedPair)
+  const [baseAsset, quoteAsset] = selectedPair.split("/")
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
-      {/* Order Book */}
+      {/* Market Data & Pair Selection */}
       <Card className="lg:col-span-1 premium-card border-[#FFD700]/20">
         <CardHeader>
-          <CardTitle className="text-sm text-[#FFD700]">Order Book</CardTitle>
-          <div className="flex items-center space-x-2">
-            <Badge variant="outline" className="border-[#FFD700]/30 text-[#FFD700]">
-              BTC/USDT
-            </Badge>
-            <span className="text-lg font-bold text-white">$43,250.50</span>
-            <Badge variant="default" className="bg-green-600 text-white">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              +2.4%
-            </Badge>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm text-[#FFD700]">Markets</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchMarketData}
+              className="text-[#FFD700] hover:bg-[#FFD700]/10"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </div>
+          {currentMarket && (
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Badge variant="outline" className="border-[#FFD700]/30 text-[#FFD700]">
+                  {selectedPair}
+                </Badge>
+                <Badge variant="default" className={currentMarket.isUp ? "bg-green-600" : "bg-red-600"}>
+                  {currentMarket.isUp ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {currentMarket.change}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-white">${currentMarket.price.toLocaleString()}</div>
+              <div className="text-sm text-white/60">Volume: {currentMarket.volume}</div>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <div className="space-y-1">
-            {/* Asks */}
-            <div className="px-4 py-2 bg-red-900/20">
-              <div className="grid grid-cols-3 text-xs font-medium text-white/60">
-                <span>Price</span>
-                <span>Amount</span>
-                <span>Total</span>
-              </div>
-            </div>
-            {orderBookData.asks.reverse().map((ask, index) => (
-              <div key={index} className="px-4 py-1 hover:bg-red-900/10">
-                <div className="grid grid-cols-3 text-xs">
-                  <span className="text-red-400">{ask.price.toFixed(2)}</span>
-                  <span className="text-white">{ask.amount.toFixed(3)}</span>
-                  <span className="text-white">{ask.total.toFixed(2)}</span>
+            {marketData.map((market) => (
+              <div
+                key={market.symbol}
+                className={`px-4 py-2 cursor-pointer hover:bg-[#FFD700]/10 ${
+                  selectedPair === market.symbol ? "bg-[#FFD700]/20" : ""
+                }`}
+                onClick={() => setSelectedPair(market.symbol)}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-white font-medium">{market.symbol}</span>
+                  <div className="text-right">
+                    <div className="text-white">${market.price.toLocaleString()}</div>
+                    <div className={`text-xs ${market.isUp ? "text-green-400" : "text-red-400"}`}>{market.change}</div>
+                  </div>
                 </div>
               </div>
             ))}
-
-            {/* Spread */}
-            <div className="px-4 py-2 bg-[#FFD700]/10 text-center">
-              <span className="text-xs font-medium text-[#FFD700]">Spread: $25.25</span>
-            </div>
-
-            {/* Bids */}
-            {orderBookData.bids.map((bid, index) => (
-              <div key={index} className="px-4 py-1 hover:bg-green-900/10">
-                <div className="grid grid-cols-3 text-xs">
-                  <span className="text-green-400">{bid.price.toFixed(2)}</span>
-                  <span className="text-white">{bid.amount.toFixed(3)}</span>
-                  <span className="text-white">{bid.total.toFixed(2)}</span>
-                </div>
-              </div>
-            ))}
-            <div className="px-4 py-2 bg-green-900/20">
-              <div className="grid grid-cols-3 text-xs font-medium text-white/60">
-                <span>Price</span>
-                <span>Amount</span>
-                <span>Total</span>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -128,25 +287,28 @@ export function TradingInterface() {
       {/* Chart Area */}
       <Card className="lg:col-span-2 premium-card border-[#FFD700]/20">
         <CardHeader>
-          <CardTitle className="text-[#FFD700]">BTC/USDT Chart</CardTitle>
+          <CardTitle className="text-[#FFD700]">{selectedPair} Chart</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-96 bg-black/50 border border-[#FFD700]/20 rounded-lg flex items-center justify-center">
             <div className="text-center">
               <TrendingUp className="h-16 w-16 mx-auto text-[#FFD700] mb-4" />
-              <p className="text-white/70">TradingView Chart Integration</p>
-              <p className="text-sm text-white/50">Advanced charting tools coming soon</p>
+              <p className="text-white/70">Real-time Chart Integration</p>
+              <p className="text-sm text-white/50">TradingView widget coming soon</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Trading Panel & Recent Trades */}
+      {/* Trading Panel & Orders */}
       <div className="lg:col-span-1 space-y-6">
         {/* Trading Panel */}
         <Card className="premium-card border-[#FFD700]/20">
           <CardHeader>
             <CardTitle className="text-sm text-[#FFD700]">Place Order</CardTitle>
+            <div className="text-xs text-white/60">
+              {baseAsset}: {getBalance(baseAsset).toFixed(6)} | {quoteAsset}: {getBalance(quoteAsset).toFixed(2)}
+            </div>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="buy" className="w-full">
@@ -184,28 +346,27 @@ export function TradingInterface() {
                       <SelectItem value="limit" className="text-white">
                         Limit
                       </SelectItem>
-                      <SelectItem value="stop" className="text-white">
-                        Stop
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="buy-price" className="text-white">
-                    Price (USDT)
-                  </Label>
-                  <Input
-                    id="buy-price"
-                    value={buyOrder.price}
-                    onChange={(e) => handleBuyOrderChange("price", e.target.value)}
-                    className="text-right bg-black/50 border-[#FFD700]/30 text-white focus:border-[#FFD700] focus:ring-[#FFD700]/20"
-                  />
-                </div>
+                {buyOrder.orderType === "limit" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="buy-price" className="text-white">
+                      Price ({quoteAsset})
+                    </Label>
+                    <Input
+                      id="buy-price"
+                      value={buyOrder.price}
+                      onChange={(e) => handleBuyOrderChange("price", e.target.value)}
+                      className="text-right bg-black/50 border-[#FFD700]/30 text-white focus:border-[#FFD700] focus:ring-[#FFD700]/20"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="buy-amount" className="text-white">
-                    Amount (BTC)
+                    Amount ({baseAsset})
                   </Label>
                   <Input
                     id="buy-amount"
@@ -217,13 +378,22 @@ export function TradingInterface() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white">Total (USDT)</Label>
+                  <Label className="text-white">Total ({quoteAsset})</Label>
                   <div className="p-2 bg-black/50 border border-[#FFD700]/30 rounded text-right text-white">
-                    {calculateTotal(buyOrder.price, buyOrder.amount)}
+                    {calculateTotal(
+                      buyOrder.orderType === "market" ? currentPrice.toString() : buyOrder.price,
+                      buyOrder.amount,
+                    )}
                   </div>
                 </div>
 
-                <Button className="w-full bg-green-600 hover:bg-green-700 text-white">Buy BTC</Button>
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  onClick={placeBuyOrder}
+                  disabled={loading}
+                >
+                  {loading ? "Placing..." : `Buy ${baseAsset}`}
+                </Button>
               </TabsContent>
 
               <TabsContent value="sell" className="space-y-4">
@@ -245,28 +415,27 @@ export function TradingInterface() {
                       <SelectItem value="limit" className="text-white">
                         Limit
                       </SelectItem>
-                      <SelectItem value="stop" className="text-white">
-                        Stop
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="sell-price" className="text-white">
-                    Price (USDT)
-                  </Label>
-                  <Input
-                    id="sell-price"
-                    value={sellOrder.price}
-                    onChange={(e) => handleSellOrderChange("price", e.target.value)}
-                    className="text-right bg-black/50 border-[#FFD700]/30 text-white focus:border-[#FFD700] focus:ring-[#FFD700]/20"
-                  />
-                </div>
+                {sellOrder.orderType === "limit" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="sell-price" className="text-white">
+                      Price ({quoteAsset})
+                    </Label>
+                    <Input
+                      id="sell-price"
+                      value={sellOrder.price}
+                      onChange={(e) => handleSellOrderChange("price", e.target.value)}
+                      className="text-right bg-black/50 border-[#FFD700]/30 text-white focus:border-[#FFD700] focus:ring-[#FFD700]/20"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="sell-amount" className="text-white">
-                    Amount (BTC)
+                    Amount ({baseAsset})
                   </Label>
                   <Input
                     id="sell-amount"
@@ -278,43 +447,63 @@ export function TradingInterface() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white">Total (USDT)</Label>
+                  <Label className="text-white">Total ({quoteAsset})</Label>
                   <div className="p-2 bg-black/50 border border-[#FFD700]/30 rounded text-right text-white">
-                    {calculateTotal(sellOrder.price, sellOrder.amount)}
+                    {calculateTotal(
+                      sellOrder.orderType === "market" ? currentPrice.toString() : sellOrder.price,
+                      sellOrder.amount,
+                    )}
                   </div>
                 </div>
 
-                <Button className="w-full bg-red-600 hover:bg-red-700 text-white">Sell BTC</Button>
+                <Button
+                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  onClick={placeSellOrder}
+                  disabled={loading}
+                >
+                  {loading ? "Placing..." : `Sell ${baseAsset}`}
+                </Button>
               </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
 
-        {/* Recent Trades */}
+        {/* Open Orders */}
         <Card className="premium-card border-[#FFD700]/20">
           <CardHeader>
-            <CardTitle className="text-sm text-[#FFD700]">Recent Trades</CardTitle>
+            <CardTitle className="text-sm text-[#FFD700]">Open Orders</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="space-y-1">
-              <div className="px-4 py-2 bg-[#FFD700]/10">
-                <div className="grid grid-cols-3 text-xs font-medium text-white/60">
-                  <span>Price</span>
-                  <span>Amount</span>
-                  <span>Time</span>
-                </div>
-              </div>
-              {recentTrades.map((trade, index) => (
-                <div key={index} className="px-4 py-1">
-                  <div className="grid grid-cols-3 text-xs">
-                    <span className={trade.type === "buy" ? "text-green-400" : "text-red-400"}>
-                      {trade.price.toFixed(2)}
-                    </span>
-                    <span className="text-white">{trade.amount.toFixed(3)}</span>
-                    <span className="text-white/60">{trade.time}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {orders.filter((order) => order.status === "PENDING").length === 0 ? (
+                <div className="px-4 py-8 text-center text-white/60">No open orders</div>
+              ) : (
+                orders
+                  .filter((order) => order.status === "PENDING")
+                  .map((order) => (
+                    <div key={order.id} className="px-4 py-2 border-b border-white/10">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="text-xs text-white/60">{order.symbol}</div>
+                          <div
+                            className={`text-sm font-medium ${order.side === "BUY" ? "text-green-400" : "text-red-400"}`}
+                          >
+                            {order.side} {order.quantity}
+                          </div>
+                          {order.price && <div className="text-xs text-white/60">@ ${order.price}</div>}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => cancelOrder(order.id)}
+                          className="text-red-400 hover:bg-red-400/10"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+              )}
             </div>
           </CardContent>
         </Card>

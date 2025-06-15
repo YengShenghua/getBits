@@ -32,6 +32,7 @@ model User {
   // Relations
   wallets      Wallet[]
   transactions Transaction[]
+  orders       Order[]
   referrals    Referral[]
   kycDocuments KycDocument[]
   securityLogs SecurityLog[]
@@ -56,6 +57,33 @@ model Wallet {
   @@unique([userId, asset])
 }
 
+model Order {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String      @db.ObjectId
+  symbol      String      // e.g., "BTC/USDT"
+  side        OrderSide   // BUY or SELL
+  type        OrderType   // MARKET, LIMIT, STOP
+  status      OrderStatus @default(PENDING)
+  
+  // Order details
+  quantity    Float       // Amount of base asset (e.g., BTC)
+  price       Float?      // Price per unit (null for market orders)
+  stopPrice   Float?      // Stop price for stop orders
+  
+  // Execution details
+  filledQuantity Float    @default(0)
+  averagePrice   Float?   // Average execution price
+  totalValue     Float?   // Total value of the trade
+  fee            Float    @default(0)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  filledAt  DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model Transaction {
   id          String            @id @default(auto()) @map("_id") @db.ObjectId
   userId      String            @db.ObjectId
@@ -71,6 +99,7 @@ model Transaction {
   toAddress   String?
   txHash      String?
   blockHeight Int?
+  orderId     String?           // Link to order if this is a trade
   
   // Risk assessment
   riskScore   Float @default(0)
@@ -159,6 +188,25 @@ enum TransactionStatus {
   PROCESSING
   COMPLETED
   FAILED
+  CANCELLED
+  REJECTED
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP
+}
+
+enum OrderStatus {
+  PENDING
+  FILLED
+  PARTIALLY_FILLED
   CANCELLED
   REJECTED
 }
