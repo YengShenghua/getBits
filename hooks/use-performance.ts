@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import * as Sentry from "@sentry/nextjs"
 
 export function usePerformanceMonitoring(componentName: string) {
   const mountTime = useRef<number>()
@@ -24,15 +23,10 @@ export function usePerformanceMonitoring(componentName: string) {
             renderCount: renderCount.current,
           })
 
-          Sentry.addBreadcrumb({
-            message: `Slow mount: ${componentName}`,
-            category: "performance",
-            level: "warning",
-            data: {
-              mountTime: mountDuration,
-              renderCount: renderCount.current,
-            },
-          })
+          // Log to console instead of Sentry
+          if (process.env.NODE_ENV === "development") {
+            console.log(`Performance Warning: ${componentName} took ${mountDuration}ms to mount`)
+          }
         }
       }
     }
