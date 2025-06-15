@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react"
 import * as Sentry from "@sentry/nextjs"
-import { log } from "@/lib/logger"
 
 export function usePerformanceMonitoring(componentName: string) {
   const mountTime = useRef<number>()
@@ -19,7 +18,7 @@ export function usePerformanceMonitoring(componentName: string) {
 
         if (mountDuration > 1000) {
           // Slow mount (>1s)
-          log.performance(`Slow component mount: ${componentName}`, {
+          console.warn(`Slow component mount: ${componentName}`, {
             component: componentName,
             mountTime: mountDuration,
             renderCount: renderCount.current,
@@ -46,7 +45,7 @@ export function usePerformanceMonitoring(componentName: string) {
 
       // Log excessive re-renders
       if (renderCount.current > 10) {
-        log.performance(`Excessive re-renders: ${componentName}`, {
+        console.warn(`Excessive re-renders: ${componentName}`, {
           component: componentName,
           renderCount: renderCount.current,
         })
@@ -65,7 +64,7 @@ export function usePerformanceMonitoring(componentName: string) {
 
           if (duration > 500) {
             // Slow operation (>500ms)
-            log.performance(`Slow operation: ${operationName}`, {
+            console.warn(`Slow operation: ${operationName}`, {
               component: componentName,
               operation: operationName,
               duration,

@@ -1,46 +1,74 @@
-import winston from "winston"
 import * as Sentry from "@sentry/nextjs"
 
-// Define log levels
+// Browser-compatible logging levels
 const levels = {
   error: 0,
   warn: 1,
   info: 2,
-  http: 3,
-  debug: 4,
+  debug: 3,
 }
 
-// Define colors for each level
-const colors = {
-  error: "red",
-  warn: "yellow",
-  info: "green",
-  http: "magenta",
-  debug: "white",
+// Check if we're in a browser environment
+const isBrowser = typeof window !== "undefined"
+
+// Browser-compatible logger
+const createLogger = () => {
+  if (isBrowser) {
+    // Client-side logging (browser)
+    return {
+      error: (message: string, meta?: any) => {
+        console.error(`[ERROR] ${message}`, meta)
+      },
+      warn: (message: string, meta?: any) => {
+        console.warn(`[WARN] ${message}`, meta)
+      },
+      info: (message: string, meta?: any) => {
+        console.info(`[INFO] ${message}`, meta)
+      },
+      debug: (message: string, meta?: any) => {
+        console.debug(`[DEBUG] ${message}`, meta)
+      },
+    }
+  } else {
+    // Server-side logging (Node.js)
+    try {
+      const winston = require("winston")
+
+      return winston.createLogger({
+        level: process.env.NODE_ENV === "production" ? "info" : "debug",
+        format: winston.format.combine(
+          winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+          winston.format.printf((info: any) => `${info.timestamp} [${info.level.toUpperCase()}]: ${info.message}`),
+        ),
+        transports: [
+          new winston.transports.Console(),
+          // Only add file transports in production
+          ...(process.env.NODE_ENV === "production"
+            ? [
+                new winston.transports.File({
+                  filename: "logs/error.log",
+                  level: "error",
+                }),
+                new winston.transports.File({
+                  filename: "logs/combined.log",
+                }),
+              ]
+            : []),
+        ],
+      })
+    } catch (error) {
+      // Fallback to console if Winston fails
+      return {
+        error: (message: string, meta?: any) => console.error(`[ERROR] ${message}`, meta),
+        warn: (message: string, meta?: any) => console.warn(`[WARN] ${message}`, meta),
+        info: (message: string, meta?: any) => console.info(`[INFO] ${message}`, meta),
+        debug: (message: string, meta?: any) => console.debug(`[DEBUG] ${message}`, meta),
+      }
+    }
+  }
 }
 
-winston.addColors(colors)
-
-// Create the logger
-const logger = winston.createLogger({
-  level: process.env.NODE_ENV === "production" ? "info" : "debug",
-  levels,
-  format: winston.format.combine(
-    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
-    winston.format.colorize({ all: true }),
-    winston.format.printf((info) => `${info.timestamp} ${info.level}: ${info.message}`),
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({
-      filename: "logs/error.log",
-      level: "error",
-    }),
-    new winston.transports.File({
-      filename: "logs/all.log",
-    }),
-  ],
-})
+const logger = createLogger()
 
 // Enhanced logging functions with Sentry integration
 export const log = {
@@ -60,7 +88,9 @@ export const log = {
 
   warn: (message: string, context?: Record<string, any>) => {
     logger.warn(message, context)
-    Sentry.captureMessage(message, "warning")
+    if (isBrowser) {
+      Sentry.captureMessage(message, "warning")
+    }
   },
 
   info: (message: string, context?: Record<string, any>) => {
@@ -105,8 +135,10 @@ export const log = {
     logger.warn(message, logData)
 
     // Send security events to Sentry
-    Sentry.captureMessage(message, "warning")
-    Sentry.setContext("security", securityData)
+    if (isBrowser) {
+      Sentry.captureMessage(message, "warning")
+      Sentry.setContext("security", securityData)
+    }
   },
 
   // Performance logging
@@ -114,12 +146,14 @@ export const log = {
     logger.info(message, { type: "PERFORMANCE", ...performanceData })
 
     // Track performance in Sentry
-    Sentry.addBreadcrumb({
-      message,
-      category: "performance",
-      level: "info",
-      data: performanceData,
-    })
+    if (isBrowser) {
+      Sentry.addBreadcrumb({
+        message,
+        category: "performance",
+        level: "info",
+        data: performanceData,
+      })
+    }
   },
 }
 
