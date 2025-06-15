@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  email             String   @unique
+  password          String
+  phone             String?
+  firstName         String?
+  lastName          String?
+  isVerified        Boolean  @default(false)
+  kycStatus         KYCStatus @default(PENDING)
+  role              UserRole @default(USER)
+  referralCode      String   @unique
+  referredBy        String?  @db.ObjectId
+  referredByUser    User?    @relation("UserReferrals", fields: [referredBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  referrals         User[]   @relation("UserReferrals")
+  signupBonus       Float    @default(0)
+  referralBonus     Float    @default(0)
+  hasDeposited      Boolean  @default(false)
+  hasTraded         Boolean  @default(false)
+  lastLogin         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  wallets           Wallet[]
+  transactions      Transaction[]
+  trades            Trade[]
+  kycDocuments      KYCDocument[]
+  securityLogs      SecurityLog[]
+  notifications     Notification[]
+  referralEarnings  ReferralEarning[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     String   // BTC, ETH, USDT, USD, etc.
+  balance   Float    @default(0)
+  locked    Float    @default(0) // Locked in pending transactions
+  address   String?  // For crypto wallets
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, asset])
+  @@map("wallets")
+}
+
+model Transaction {
+  id              String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String            @db.ObjectId
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            TransactionType
+  asset           String
+  amount          Float
+  fee             Float             @default(0)
+  status          TransactionStatus @default(PENDING)
+  method          String?           // crypto, bank, card
+  address         String?           // For crypto transactions
+  bankDetails     Json?             // For bank transfers
+  txHash          String?           // Blockchain transaction hash
+  depositAddress  String?           // Generated deposit address
+  riskScore       Float?            @default(0)
+  riskFlags       String[]          @default([])
+  adminNotes      String?
+  processedAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("transactions")
+}
+
+model Trade {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String      @db.ObjectId
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        TradeType   // BUY, SELL
+  pair        String      // BTC/USD, ETH/BTC, etc.
+  baseAsset   String      // BTC in BTC/USD
+  quoteAsset  String      // USD in BTC/USD
+  amount      Float       // Amount of base asset
+  price       Float       // Price per unit
+  total       Float       // Total value
+  fee         Float       @default(0)
+  status      TradeStatus @default(PENDING)
+  executedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("trades")
+}
+
+model KYCDocument {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    // passport, license, utility_bill, etc.
+  fileName    String
+  fileUrl     String
+  status      KYCStatus @default(PENDING)
+  adminNotes  String?
+  uploadedAt  DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  @@map("kyc_documents")
+}
+
+model ReferralEarning {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referredId  String   @db.ObjectId
+  amount      Float
+  asset       String   @default("BTC")
+  type        String   // signup, deposit, trade
+  createdAt   DateTime @default(now())
+
+  @@map("referral_earnings")
+}
+
+model SecurityLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     String   // login, failed_login, withdrawal, etc.
+  ipAddress String
+  userAgent String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@map("security_logs")
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // info, warning, success, error
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model SystemSetting {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model MarketData {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  symbol    String   @unique // BTC, ETH, etc.
+  price     Float
+  change24h Float
+  volume24h Float
+  updatedAt DateTime @updatedAt
+
+  @@map("market_data")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum KYCStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE
+  REFERRAL_BONUS
+  SIGNUP_BONUS
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  FLAGGED
+}
+
+enum TradeType {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  PENDING
+  EXECUTED
+  CANCELLED
+  FAILED
+}

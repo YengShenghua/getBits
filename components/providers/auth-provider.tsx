@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 
 interface User {
@@ -9,13 +8,20 @@ interface User {
   email: string
   phone?: string
   isVerified: boolean
-  kycStatus: "pending" | "approved" | "rejected"
+  kycStatus: "PENDING" | "UNDER_REVIEW" | "APPROVED" | "REJECTED"
   referralCode: string
   signupBonus: number
   referralBonus: number
   hasDeposited: boolean
   hasTraded: boolean
-  role: "user" | "admin" | "super_admin" // Added role field
+  role: "USER" | "ADMIN" | "SUPER_ADMIN"
+  wallets?: Array<{
+    id: string
+    asset: string
+    balance: number
+    locked: number
+    address?: string
+  }>
 }
 
 interface AuthContextType {
@@ -24,7 +30,8 @@ interface AuthContextType {
   signup: (email: string, password: string, phone?: string, referralCode?: string) => Promise<void>
   logout: () => void
   isLoading: boolean
-  isAdmin: boolean // Added admin check
+  isAdmin: boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -33,63 +40,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem("getbits-user")
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
+  const refreshUser = async () => {
+    try {
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data.user)
+      } else {
+        setUser(null)
+      }
+    } catch (error) {
+      console.error("Failed to refresh user:", error)
+      setUser(null)
     }
-    setIsLoading(false)
+  }
+
+  useEffect(() => {
+    const initAuth = async () => {
+      await refreshUser()
+      setIsLoading(false)
+    }
+
+    initAuth()
   }, [])
 
   const login = async (email: string, password: string) => {
-    // Mock login - check for admin credentials
-    const isAdminLogin = email === "admin@getbits.com" && password === "admin123"
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    })
 
-    const mockUser: User = {
-      id: isAdminLogin ? "admin-1" : "1",
-      email,
-      isVerified: true,
-      kycStatus: "approved",
-      referralCode: "GB" + Math.random().toString(36).substr(2, 8).toUpperCase(),
-      signupBonus: isAdminLogin ? 0 : 0.002,
-      referralBonus: 0,
-      hasDeposited: isAdminLogin ? true : false,
-      hasTraded: isAdminLogin ? true : false,
-      role: isAdminLogin ? "super_admin" : "user",
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || "Login failed")
     }
-    setUser(mockUser)
-    localStorage.setItem("getbits-user", JSON.stringify(mockUser))
+
+    setUser(data.user)
   }
 
   const signup = async (email: string, password: string, phone?: string, referralCode?: string) => {
-    // Mock signup with bonus
-    const mockUser: User = {
-      id: Math.random().toString(),
-      email,
-      phone,
-      isVerified: false,
-      kycStatus: "pending",
-      referralCode: "GB" + Math.random().toString(36).substr(2, 8).toUpperCase(),
-      signupBonus: 0.002, // 0.002 BTC signup bonus
-      referralBonus: 0,
-      hasDeposited: false,
-      hasTraded: false,
-      role: "user",
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password, phone, referralCode }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || "Signup failed")
     }
-    setUser(mockUser)
-    localStorage.setItem("getbits-user", JSON.stringify(mockUser))
+
+    // Auto-login after signup
+    await login(email, password)
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem("getbits-user")
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      })
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      setUser(null)
+    }
   }
 
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin"
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN"
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isLoading, isAdmin }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        signup,
+        logout,
+        isLoading,
+        isAdmin,
+        refreshUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   )
 }
 
