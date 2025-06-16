@@ -41,16 +41,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Insufficient balance" }, { status: 400 })
     }
 
-    // Create withdrawal transaction
+    // Create withdrawal transaction with enhanced details
     const transaction = await prisma.transaction.create({
       data: {
         userId: user.id,
         type: "WITHDRAWAL",
         asset,
         amount: Number.parseFloat(amount),
-        description: "Withdrawal request",
+        description: `Withdrawal to ${address.slice(0, 6)}...${address.slice(-4)}`,
         toAddress: address,
         status: "PENDING",
+        metadata: JSON.stringify({
+          network: getNetworkForAsset(asset),
+          timestamp: new Date().toISOString(),
+          userAgent: request.headers.get("user-agent"),
+          walletBalanceBefore: wallet.balance,
+        }),
       },
     })
 
@@ -71,4 +77,14 @@ export async function POST(request: NextRequest) {
     console.error("Withdrawal API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+function getNetworkForAsset(asset: string): string {
+  const networks: Record<string, string> = {
+    BTC: "Bitcoin",
+    ETH: "Ethereum",
+    USDT: "Ethereum (ERC-20)",
+    BNB: "BNB Smart Chain",
+  }
+  return networks[asset] || "Unknown"
 }
