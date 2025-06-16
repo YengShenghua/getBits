@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
@@ -9,30 +9,30 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  email     String   @unique
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  email     String  @unique
   password  String
   name      String?
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
+  role      Role    @default(USER)
+  isActive  Boolean @default(true)
   firstName String?
-  lastName String?
+  lastName  String?
 
   // Profile fields
-  hasDeposited Boolean @default(false)
-  hasTraded    Boolean @default(false)
-  signupBonus  Float   @default(0.002)
-  referralCode String?
+  hasDeposited     Boolean @default(false)
+  hasTraded        Boolean @default(false)
+  signupBonus      Float   @default(0.002)
+  referralCode     String?
   usedReferralCode String?
 
   // KYC fields
-  kycStatus    KycStatus @default(PENDING)
-  kycLevel     Int       @default(0)
-  
+  kycStatus KycStatus @default(PENDING)
+  kycLevel  Int       @default(0)
+
   // Security
-  twoFactorEnabled Boolean @default(false)
+  twoFactorEnabled Boolean   @default(false)
   lastLogin        DateTime?
-  
+
   // Relations
   wallets      Wallet[]
   transactions Transaction[]
@@ -40,7 +40,7 @@ model User {
   referrals    Referral[]
   kycDocuments KycDocument[]
   securityLogs SecurityLog[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -52,39 +52,39 @@ model Wallet {
   balance  Float  @default(0)
   locked   Float  @default(0)
   usdPrice Float  @default(0)
-  
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([userId, asset])
 }
 
 model Order {
-  id          String      @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String      @db.ObjectId
-  symbol      String      // e.g., "BTC/USDT"
-  side        OrderSide   // BUY or SELL
-  type        OrderType   // MARKET, LIMIT, STOP
-  status      OrderStatus @default(PENDING)
-  
+  id     String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId String      @db.ObjectId
+  symbol String // e.g., "BTC/USDT"
+  side   OrderSide // BUY or SELL
+  type   OrderType // MARKET, LIMIT, STOP
+  status OrderStatus @default(PENDING)
+
   // Order details
-  quantity    Float       // Amount of base asset (e.g., BTC)
-  price       Float?      // Price per unit (null for market orders)
-  stopPrice   Float?      // Stop price for stop orders
-  
+  quantity  Float // Amount of base asset (e.g., BTC)
+  price     Float? // Price per unit (null for market orders)
+  stopPrice Float? // Stop price for stop orders
+
   // Execution details
-  filledQuantity Float    @default(0)
-  averagePrice   Float?   // Average execution price
-  totalValue     Float?   // Total value of the trade
-  fee            Float    @default(0)
-  
+  filledQuantity Float  @default(0)
+  averagePrice   Float? // Average execution price
+  totalValue     Float? // Total value of the trade
+  fee            Float  @default(0)
+
   // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   filledAt  DateTime?
-  
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -97,80 +97,80 @@ model Transaction {
   fee         Float             @default(0)
   status      TransactionStatus @default(PENDING)
   description String?
-  
+
   // Transaction specific fields
   fromAddress String?
   toAddress   String?
   txHash      String?
   blockHeight Int?
-  orderId     String?           // Link to order if this is a trade
-  
+  orderId     String? // Link to order if this is a trade
+
   // Risk assessment
-  riskScore   Float @default(0)
-  riskFlags   String[]
-  
+  riskScore Float    @default(0)
+  riskFlags String[]
+
   // Admin fields
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  notes       String?
-  
+  reviewedBy String?
+  reviewedAt DateTime?
+  notes      String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model KycDocument {
-  id       String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId   String    @db.ObjectId
-  type     String
-  status   KycStatus @default(PENDING)
-  fileUrl  String
-  notes    String?
-  
+  id      String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId  String    @db.ObjectId
+  type    String
+  status  KycStatus @default(PENDING)
+  fileUrl String
+  notes   String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Referral {
-  id           String @id @default(auto()) @map("_id") @db.ObjectId
-  referrerId   String @db.ObjectId
-  referredId   String @db.ObjectId
-  code         String @unique
-  commission   Float  @default(0)
-  isActive     Boolean @default(true)
-  
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  referrerId String  @db.ObjectId
+  referredId String  @db.ObjectId
+  code       String  @unique
+  commission Float   @default(0)
+  isActive   Boolean @default(true)
+
   referrer User @relation(fields: [referrerId], references: [id], onDelete: Cascade)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model SecurityLog {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String?  @db.ObjectId
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String? @db.ObjectId
   action    String
   ip        String?
   userAgent String?
   success   Boolean
   details   Json?
-  
+
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   createdAt DateTime @default(now())
 }
 
 model MarketData {
-  id       String @id @default(auto()) @map("_id") @db.ObjectId
-  symbol   String @unique
-  price    Float
-  change   String  // Keep as string for display (e.g., "+2.4%")
-  volume   String  // Keep as string for display (e.g., "1.2B")
-  isUp     Boolean
-  
-  updatedAt DateTime @updatedAt @default(now())
+  id     String  @id @default(auto()) @map("_id") @db.ObjectId
+  symbol String  @unique
+  price  Float
+  change String // Keep as string for display (e.g., "+2.4%")
+  volume String // Keep as string for display (e.g., "1.2B")
+  isUp   Boolean
+
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 enum Role {
