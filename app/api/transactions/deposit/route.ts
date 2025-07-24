@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid deposit data" }, { status: 400 })
     }
 
-    // Create deposit transaction with enhanced details
+    // Create deposit transaction
     const transaction = await prisma.transaction.create({
       data: {
         userId: user.id,
@@ -27,12 +27,6 @@ export async function POST(request: NextRequest) {
         description: `${method} deposit - ${asset}`,
         toAddress: address,
         status: "PENDING",
-        metadata: JSON.stringify({
-          method,
-          network: getNetworkForAsset(asset),
-          timestamp: new Date().toISOString(),
-          userAgent: request.headers.get("user-agent"),
-        }),
       },
     })
 
@@ -98,14 +92,4 @@ function getAssetPrice(asset: string): number {
     BNB: 315,
   }
   return prices[asset] || 0
-}
-
-function getNetworkForAsset(asset: string): string {
-  const networks: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    USDT: "Ethereum (ERC-20)",
-    BNB: "BNB Smart Chain",
-  }
-  return networks[asset] || "Unknown"
 }

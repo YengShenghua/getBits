@@ -12,108 +12,58 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type")
     const status = searchParams.get("status")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
 
-    const where: any = {
-      userId: user.id,
+    const where: any = { userId: user.id }
+    if (type && type !== "all") {
+      where.type = type.toUpperCase()
     }
-
-    if (type) {
-      where.type = type
-    }
-
-    if (status) {
-      where.status = status
+    if (status && status !== "all") {
+      where.status = status.toUpperCase()
     }
 
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
         where,
         orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
         take: limit,
-        skip: offset,
-        include: {
-          user: {
-            select: {
-              email: true,
-              name: true,
-            },
-          },
+        select: {
+          id: true,
+          type: true,
+          asset: true,
+          amount: true,
+          status: true,
+          description: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
       prisma.transaction.count({ where }),
     ])
 
-    // Calculate summary statistics
-    const summary = await prisma.transaction.groupBy({
-      by: ["type", "status"],
-      where: { userId: user.id },
-      _count: true,
-      _sum: {
-        amount: true,
-      },
-    })
+    const pagination = {
+      page,
+      pages: Math.ceil(total / limit),
+      total,
+      limit,
+    }
 
     return NextResponse.json({
       transactions,
-      total,
-      summary,
-      pagination: {
-        limit,
-        offset,
-        hasMore: offset + limit < total,
-      },
+      pagination,
+      success: true,
     })
   } catch (error) {
-    console.error("Transaction tracking error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const user = await getCurrentUser(request)
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { transactionId, action, notes } = body
-
-    // Validate the transaction belongs to the user
-    const transaction = await prisma.transaction.findFirst({
-      where: {
-        id: transactionId,
-        userId: user.id,
+    console.error("Transaction tracking API error:", error)
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        transactions: [],
+        pagination: { page: 1, pages: 0, total: 0, limit: 10 },
       },
-    })
-
-    if (!transaction) {
-      return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
-    }
-
-    // Log the action
-    await prisma.transaction.update({
-      where: { id: transactionId },
-      data: {
-        metadata: JSON.stringify({
-          ...JSON.parse(transaction.metadata || "{}"),
-          userActions: [
-            ...(JSON.parse(transaction.metadata || "{}").userActions || []),
-            {
-              action,
-              notes,
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        }),
-      },
-    })
-
-    return NextResponse.json({ message: "Action logged successfully" })
-  } catch (error) {
-    console.error("Transaction action error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+      { status: 500 },
+    )
   }
 }
