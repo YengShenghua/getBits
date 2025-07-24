@@ -1,27 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['bcryptjs', '@prisma/client']
-  },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        crypto: false,
-        stream: false,
-        url: false,
-        zlib: false,
-        http: false,
-        https: false,
-        assert: false,
-        os: false,
-        path: false,
-      }
-    }
-    return config
+    serverComponentsExternalPackages: ["@prisma/client", "bcryptjs"],
   },
   eslint: {
     ignoreDuringBuilds: true,
@@ -30,8 +10,19 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
+    domains: ["localhost"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+    ],
     unoptimized: true,
-  }
+  },
+  webpack: (config) => {
+    config.externals.push("@node-rs/argon2", "@node-rs/bcrypt")
+    return config
+  },
 }
 
 export default nextConfig

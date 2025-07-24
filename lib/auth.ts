@@ -1,16 +1,9 @@
 import jwt from "jsonwebtoken"
 import bcrypt from "bcryptjs"
-import { prisma } from "./prisma"
 import type { NextRequest } from "next/server"
+import { prisma } from "./prisma"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
-
-export interface JWTPayload {
-  userId: string
-  email: string
-  iat?: number
-  exp?: number
-}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12)
@@ -24,30 +17,21 @@ export function generateToken(payload: { userId: string; email: string }): strin
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" })
 }
 
-export function verifyToken(token: string): JWTPayload | null {
+export function verifyToken(token: string): { userId: string; email: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload
-  } catch (error) {
-    console.error("Token verification failed:", error)
+    return jwt.verify(token, JWT_SECRET) as { userId: string; email: string }
+  } catch {
     return null
   }
 }
 
 export async function getCurrentUser(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization")
-    const cookieToken = request.cookies.get("auth-token")?.value
-
-    const token = authHeader?.replace("Bearer ", "") || cookieToken
-
-    if (!token) {
-      return null
-    }
+    const token = request.cookies.get("auth-token")?.value
+    if (!token) return null
 
     const payload = verifyToken(token)
-    if (!payload) {
-      return null
-    }
+    if (!payload) return null
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
@@ -57,28 +41,7 @@ export async function getCurrentUser(request: NextRequest) {
     })
 
     return user
-  } catch (error) {
-    console.error("Get current user error:", error)
+  } catch {
     return null
   }
 }
-
-export async function requireAuth(request: NextRequest) {
-  const user = await getCurrentUser(request)
-  if (!user) {
-    throw new Error("Authentication required")
-  }
-  return user
-}
-
-export async function requireAdmin(request: NextRequest) {
-  const user = await requireAuth(request)
-  if (user.role !== "ADMIN") {
-    throw new Error("Admin access required")
-  }
-  return user
-}
-
-// Legacy function names for backward compatibility
-export const comparePassword = verifyPassword
-export const signToken = generateToken
