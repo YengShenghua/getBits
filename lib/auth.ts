@@ -1,6 +1,5 @@
-import jwt from "jsonwebtoken"
 import bcrypt from "bcryptjs"
-import type { NextRequest } from "next/server"
+import jwt from "jsonwebtoken"
 import { prisma } from "./prisma"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
@@ -13,35 +12,50 @@ export async function verifyPassword(password: string, hashedPassword: string): 
   return bcrypt.compare(password, hashedPassword)
 }
 
-export function generateToken(payload: { userId: string; email: string }): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" })
+export function generateToken(userId: string): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" })
 }
 
-export function verifyToken(token: string): { userId: string; email: string } | null {
+export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string; email: string }
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
+    return decoded
   } catch {
     return null
   }
 }
 
-export async function getCurrentUser(request: NextRequest) {
+export async function getCurrentUser(token: string) {
   try {
-    const token = request.cookies.get("auth-token")?.value
-    if (!token) return null
-
-    const payload = verifyToken(token)
-    if (!payload) return null
+    const decoded = verifyToken(token)
+    if (!decoded) return null
 
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      include: {
-        wallets: true,
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        firstName: true,
+        lastName: true,
+        hasDeposited: true,
+        hasTraded: true,
+        signupBonus: true,
+        referralCode: true,
+        kycStatus: true,
+        kycLevel: true,
+        twoFactorEnabled: true,
+        lastLogin: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 
     return user
-  } catch {
+  } catch (error) {
+    console.error("Error getting current user:", error)
     return null
   }
 }
