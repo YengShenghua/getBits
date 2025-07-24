@@ -147,3 +147,6 @@ const TransactionHistory = () => {
 }
 
 export default TransactionHistory
+
+// Add named export
+export { TransactionHistory }
