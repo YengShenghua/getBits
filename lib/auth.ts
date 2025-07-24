@@ -12,7 +12,15 @@ export interface JWTPayload {
   exp?: number
 }
 
-export function signToken(payload: { userId: string; email: string }): string {
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 12)
+}
+
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
+}
+
+export function generateToken(payload: { userId: string; email: string }): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" })
 }
 
@@ -23,14 +31,6 @@ export function verifyToken(token: string): JWTPayload | null {
     console.error("Token verification failed:", error)
     return null
   }
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
-}
-
-export async function comparePassword(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
 }
 
 export async function getCurrentUser(request: NextRequest) {
@@ -51,14 +51,8 @@ export async function getCurrentUser(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        hasDeposited: true,
-        hasTraded: true,
-        createdAt: true,
+      include: {
+        wallets: true,
       },
     })
 
@@ -84,3 +78,7 @@ export async function requireAdmin(request: NextRequest) {
   }
   return user
 }
+
+// Legacy function names for backward compatibility
+export const comparePassword = verifyPassword
+export const signToken = generateToken

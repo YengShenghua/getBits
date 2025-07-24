@@ -2,153 +2,127 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TransactionDetailsModal } from "@/components/transactions/transaction-details-modal"
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw } from "lucide-react"
+import { Eye, Filter, Download } from "lucide-react"
 
 interface Transaction {
   id: string
   type: "DEPOSIT" | "WITHDRAWAL" | "TRADE"
+  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED"
   amount: number
   currency: string
-  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED"
   createdAt: string
   updatedAt: string
-  description?: string
-  toAddress?: string
+  hash?: string
   fromAddress?: string
+  toAddress?: string
   fee?: number
+  metadata?: any
 }
 
-function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return "Invalid Date"
-  }
+interface TransactionHistoryProps {
+  userId?: string
+  showFilters?: boolean
+  maxItems?: number
 }
 
-function formatCurrency(amount: number, currency: string): string {
-  try {
-    return (
-      new Intl.NumberFormat("en-US", {
-        style: "decimal",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 8,
-      }).format(amount) +
-      " " +
-      currency
-    )
-  } catch {
-    return `${amount} ${currency}`
-  }
-}
-
-function getStatusIcon(status: string) {
-  switch (status) {
-    case "COMPLETED":
-      return <CheckCircle className="h-4 w-4 text-green-500" />
-    case "PENDING":
-      return <Clock className="h-4 w-4 text-yellow-500" />
-    case "FAILED":
-      return <XCircle className="h-4 w-4 text-red-500" />
-    case "CANCELLED":
-      return <AlertCircle className="h-4 w-4 text-gray-500" />
-    default:
-      return <Clock className="h-4 w-4 text-gray-500" />
-  }
-}
-
-function getStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "COMPLETED":
-      return "default"
-    case "PENDING":
-      return "secondary"
-    case "FAILED":
-      return "destructive"
-    case "CANCELLED":
-      return "outline"
-    default:
-      return "secondary"
-  }
-}
-
-function getTypeIcon(type: string) {
-  switch (type) {
-    case "DEPOSIT":
-      return <ArrowDownLeft className="h-4 w-4 text-green-500" />
-    case "WITHDRAWAL":
-      return <ArrowUpRight className="h-4 w-4 text-red-500" />
-    case "TRADE":
-      return <ArrowUpRight className="h-4 w-4 text-blue-500" />
-    default:
-      return <ArrowUpRight className="h-4 w-4 text-gray-500" />
-  }
-}
-
-export default function TransactionHistory() {
+function TransactionHistoryComponent({ userId, showFilters = true, maxItems }: TransactionHistoryProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<string>("all")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+
+  useEffect(() => {
+    fetchTransactions()
+  }, [userId, typeFilter, statusFilter])
 
   const fetchTransactions = async () => {
     try {
       setLoading(true)
-      setError(null)
-
       const params = new URLSearchParams()
-      if (filter !== "all") params.append("type", filter)
-      if (statusFilter !== "all") params.append("status", statusFilter)
 
-      const response = await fetch(`/api/transactions?${params.toString()}`)
+      if (userId) params.append("userId", userId)
+      if (typeFilter !== "all") params.append("type", typeFilter)
+      if (statusFilter !== "all") params.append("status", statusFilter)
+      if (maxItems) params.append("limit", maxItems.toString())
+
+      const response = await fetch(`/api/transactions?${params}`)
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error("Failed to fetch transactions")
       }
 
       const data = await response.json()
-
-      if (data.success) {
-        setTransactions(data.transactions || [])
-      } else {
-        throw new Error(data.error || "Failed to fetch transactions")
-      }
+      setTransactions(data.transactions || [])
     } catch (err) {
-      console.error("Error fetching transactions:", err)
       setError(err instanceof Error ? err.message : "Failed to load transactions")
-      setTransactions([])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await fetchTransactions()
-    setRefreshing(false)
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      PENDING: "default",
+      COMPLETED: "default",
+      FAILED: "destructive",
+      CANCELLED: "secondary",
+    } as const
+
+    const colors = {
+      PENDING: "bg-yellow-100 text-yellow-800",
+      COMPLETED: "bg-green-100 text-green-800",
+      FAILED: "bg-red-100 text-red-800",
+      CANCELLED: "bg-gray-100 text-gray-800",
+    }
+
+    return <Badge className={colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800"}>{status}</Badge>
   }
 
-  useEffect(() => {
-    fetchTransactions()
-  }, [filter, statusFilter])
+  const getTypeBadge = (type: string) => {
+    const colors = {
+      DEPOSIT: "bg-blue-100 text-blue-800",
+      WITHDRAWAL: "bg-orange-100 text-orange-800",
+      TRADE: "bg-purple-100 text-purple-800",
+    }
 
-  if (loading && transactions.length === 0) {
+    return <Badge className={colors[type as keyof typeof colors] || "bg-gray-100 text-gray-800"}>{type}</Badge>
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString() + " " + date.toLocaleTimeString()
+  }
+
+  const formatAmount = (amount: number, currency: string) => {
+    return `${amount.toFixed(8)} ${currency}`
+  }
+
+  const exportTransactions = () => {
+    const csv = [
+      ["Date", "Type", "Status", "Amount", "Currency", "Hash"].join(","),
+      ...transactions.map((tx) =>
+        [formatDate(tx.createdAt), tx.type, tx.status, tx.amount, tx.currency, tx.hash || ""].join(","),
+      ),
+    ].join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "transactions.csv"
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
+  if (loading) {
     return (
       <Card>
         <CardHeader>
@@ -157,18 +131,24 @@ export default function TransactionHistory() {
         <CardContent>
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center space-x-4">
-                <Skeleton className="h-10 w-10 rounded-full" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-[200px]" />
-                  <Skeleton className="h-4 w-[150px]" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-[100px]" />
-                  <Skeleton className="h-4 w-[80px]" />
-                </div>
-              </div>
+              <Skeleton key={i} className="h-12 w-full" />
             ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Transaction History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={fetchTransactions}>Retry</Button>
           </div>
         </CardContent>
       </Card>
@@ -182,102 +162,84 @@ export default function TransactionHistory() {
           <div className="flex items-center justify-between">
             <CardTitle>Transaction History</CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              <Button variant="outline" size="sm" onClick={exportTransactions}>
+                <Download className="h-4 w-4 mr-2" />
+                Export
               </Button>
-              <Select value={filter} onValueChange={setFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="deposit">Deposits</SelectItem>
-                  <SelectItem value="withdrawal">Withdrawals</SelectItem>
-                  <SelectItem value="trade">Trades</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {error ? (
-            <div className="text-center py-8">
-              <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">{error}</p>
-              <Button onClick={fetchTransactions} variant="outline">
-                Try Again
-              </Button>
+          {showFilters && (
+            <div className="flex gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="DEPOSIT">Deposit</SelectItem>
+                    <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                    <SelectItem value="TRADE">Trade</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="FAILED">Failed</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          ) : transactions.length === 0 ? (
+          )}
+
+          {transactions.length === 0 ? (
             <div className="text-center py-8">
-              <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No transactions found</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {filter !== "all" || statusFilter !== "all"
-                  ? "Try adjusting your filters"
-                  : "Your transactions will appear here once you make a deposit or withdrawal"}
-              </p>
+              <p className="text-gray-500">No transactions found</p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Hash</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
+                    <TableCell>{formatDate(transaction.createdAt)}</TableCell>
+                    <TableCell>{getTypeBadge(transaction.type)}</TableCell>
+                    <TableCell>{getStatusBadge(transaction.status)}</TableCell>
+                    <TableCell>{formatAmount(transaction.amount, transaction.currency)}</TableCell>
+                    <TableCell>
+                      {transaction.hash ? (
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">{transaction.hash.slice(0, 8)}...</code>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedTransaction(transaction)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getTypeIcon(transaction.type)}
-                          <span className="capitalize">{transaction.type.toLowerCase()}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{formatCurrency(transaction.amount, transaction.currency)}</div>
-                        {transaction.fee && transaction.fee > 0 && (
-                          <div className="text-sm text-muted-foreground">
-                            Fee: {formatCurrency(transaction.fee, transaction.currency)}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(transaction.status)}
-                          <Badge variant={getStatusBadgeVariant(transaction.status)}>{transaction.status}</Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{formatDate(transaction.createdAt)}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedTransaction(transaction)}>
-                          View Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
@@ -286,12 +248,13 @@ export default function TransactionHistory() {
         <TransactionDetailsModal
           transaction={selectedTransaction}
           open={!!selectedTransaction}
-          onOpenChange={(open) => !open && setSelectedTransaction(null)}
+          onClose={() => setSelectedTransaction(null)}
         />
       )}
     </>
   )
 }
 
-// Named export for compatibility
-export { TransactionHistory }
+// Export both default and named exports
+export default TransactionHistoryComponent
+export { TransactionHistoryComponent as TransactionHistory }
