@@ -13,13 +13,15 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type")
     const status = searchParams.get("status")
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const limit = Number.parseInt(searchParams.get("limit") || "20")
 
     const where: any = { userId: user.id }
+
     if (type && type !== "all") {
       where.type = type.toUpperCase()
     }
-    if (status) {
+
+    if (status && status !== "all") {
       where.status = status.toUpperCase()
     }
 
@@ -29,9 +31,35 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          description: true,
+          asset: true,
+          toAddress: true,
+          fromAddress: true,
+        },
       }),
       prisma.transaction.count({ where }),
     ])
+
+    // Transform the data to match the expected format
+    const formattedTransactions = transactions.map((transaction) => ({
+      id: transaction.id,
+      type: transaction.type,
+      amount: transaction.amount,
+      currency: transaction.asset || "BTC",
+      status: transaction.status,
+      createdAt: transaction.createdAt.toISOString(),
+      updatedAt: transaction.updatedAt.toISOString(),
+      description: transaction.description,
+      toAddress: transaction.toAddress,
+      fromAddress: transaction.fromAddress,
+    }))
 
     const pagination = {
       page,
@@ -40,10 +68,21 @@ export async function GET(request: NextRequest) {
       limit,
     }
 
-    return NextResponse.json({ transactions, pagination })
+    return NextResponse.json({
+      success: true,
+      transactions: formattedTransactions,
+      pagination,
+    })
   } catch (error) {
     console.error("Transactions API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        transactions: [],
+        pagination: { page: 1, pages: 0, total: 0, limit: 20 },
+      },
+      { status: 500 },
+    )
   }
 }
 
@@ -55,22 +94,38 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { type, asset, amount, description } = body
+    const { type, amount, asset, description, toAddress } = body
+
+    if (!type || !amount || !asset) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
 
     const transaction = await prisma.transaction.create({
       data: {
         userId: user.id,
         type: type.toUpperCase(),
-        asset,
         amount: Number.parseFloat(amount),
-        description,
+        asset: asset.toUpperCase(),
         status: "PENDING",
+        description: description || `${type} transaction`,
+        toAddress: toAddress || null,
       },
     })
 
-    return NextResponse.json({ transaction })
+    return NextResponse.json({
+      success: true,
+      transaction: {
+        id: transaction.id,
+        type: transaction.type,
+        amount: transaction.amount,
+        currency: transaction.asset,
+        status: transaction.status,
+        createdAt: transaction.createdAt.toISOString(),
+        description: transaction.description,
+      },
+    })
   } catch (error) {
-    console.error("Create transaction error:", error)
+    console.error("Transaction creation error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
